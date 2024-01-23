@@ -122,7 +122,7 @@ func WriteFile(client *ssh.Client, fileName string, file []byte) (error) {
 func ConnectSSHAgentSock() (*net.Conn, error) {
 	agentPath, exist := os.LookupEnv("SSH_AUTH_SOCK")
 	if ! exist {
-		log.Fatalln("SSH-Agent is not running, unable to get authenticate...")
+		log.Fatalln("SSH-Agent is not running, unable to authenticate...")
 	}
 	// Connect to ssh-agent socket
 	agentSock, err := net.Dial("unix", agentPath)

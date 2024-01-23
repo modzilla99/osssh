@@ -40,7 +40,6 @@ func ParseArgs() (uuid string, username string) {
 			username = os.Args[seq + 1]
 		}
 	}
-	fmt.Print(len(uuid))
 	if len(uuid) == 0 {
 		fmt.Println("Please specify a uuid")
 	}
