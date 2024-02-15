@@ -24,10 +24,8 @@ type OpenStackClient struct {
 func CreateClient() (*OpenStackClient, error) {
 	fmt.Print("Authenticating to OpenStack...")
 	opts := new(clientconfig.ClientOpts)
-	// opts.Cloud = "staging"
-	provider, err := clientconfig.AuthenticatedClient(opts)
+	provider, err := authenticate(opts)
 	if err != nil {
-		fmt.Println("Error\nUsing NWSID is currently not supported")
 		return nil, err
 	}
 	fmt.Println("Done")
@@ -35,6 +33,18 @@ func CreateClient() (*OpenStackClient, error) {
 		ProviderClient: provider,
 		auth: opts,
 	}, nil
+}
+
+func authenticate(o *clientconfig.ClientOpts) (provider *gophercloud.ProviderClient, err error) {
+	provider, err = clientconfig.AuthenticatedClient(o)
+	if err != nil {
+		if err.Error() == "You must provide exactly one of DomainID or DomainName in a Scope with ProjectName" {
+			o.AuthInfo.DomainName = "default"
+			return clientconfig.AuthenticatedClient(o)
+		}
+		return nil, err
+	}
+	return provider, nil
 }
 
 func (c *OpenStackClient) GetNeutronClient() (*gophercloud.ServiceClient, error) {

@@ -4,7 +4,7 @@ Use the magic of NetworkNamespaces and the local MetadataPort to port-forward a 
 
 ## ⚠ Warning
 
-The code is probably written very poorly as it is my first golang project. It's barely working.
+The code is probably written very poorly as it is my first golang project. It's barely working and should be considered as a PoC.
 
 ## Run
 
