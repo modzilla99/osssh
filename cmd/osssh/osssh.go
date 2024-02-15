@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strings"
@@ -56,7 +55,8 @@ func main() {
 		Type: "tcp",
 	})
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Error\n%s\n", err)
+		os.Exit(1)
 	}
 	processes = append(processes, pfs)
 	fmt.Println("Done")
