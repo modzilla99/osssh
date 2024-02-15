@@ -23,7 +23,7 @@ var remotePids []int
 var hypervisor string
 
 func main() {
-	uuid, username := utils.ParseArgs()
+	uuid, username, port := utils.ParseArgs()
 	setupCleanup()
 	osc, err := openstack.CreateClient()
 	if err != nil {
@@ -49,7 +49,7 @@ func main() {
 	remotePids = append(remotePids, netnsproxy.PortForwardViaSSH(c, netns, i.IPAddress, 22))
 
 	fmt.Print("Setting up local port forwarding...")
-	pfs, err := ssh.PortForward(c, 2222, generic.AddressPort{
+	pfs, err := ssh.PortForward(c, port, generic.AddressPort{
 		Address: "127.0.0.1",
 		Port: 3022,
 		Type: "tcp",
@@ -60,7 +60,7 @@ func main() {
 	}
 	processes = append(processes, pfs)
 	fmt.Println("Done")
-	fmt.Printf("Forwarding %s:22 from netns %s to 127.0.0.1:2222\n", i.IPAddress, netns)
+	fmt.Printf("Forwarding %s:22 from netns %s to 127.0.0.1:%d\n", i.IPAddress, netns, port)
 
 	cha := make(chan struct{})
 	<-cha
