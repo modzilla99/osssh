@@ -1,63 +1,41 @@
 package utils
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 
+	"github.com/hashicorp/go-uuid"
 	"github.com/modzilla99/osssh/internal/ssh"
 	gossh "golang.org/x/crypto/ssh"
 )
 
-func ParseArgs() (uuid string, username string) {
-	for _, arg := range os.Args {
-		if arg == "-h" {
-			help()
-		}
-		if arg == "--help" {
-			help()
-		}
-	}
-	if len(os.Args) > 4 {
-		fmt.Println("Too many arguments provided")
+func ParseArgs() (string, string) {
+	// Set username, default to the current username of the shell session
+	username, gotUsernameFromEnv := os.LookupEnv("USERNAME")
+	flag.StringVar(&username, "u", username, "sets username to connect to HV with")
+
+	flag.Parse()
+	args := flag.Args()
+
+	if !gotUsernameFromEnv && username == "" {
+		fmt.Println("Cannot get username from environment, please specify username with -u")
 		os.Exit(1)
 	}
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide UUID of Server as an argument")
+
+	if len(args) != 1 {
+		fmt.Println("Usage: osssh [-u] uuid")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	for seq, arg := range os.Args {
-		if len(arg) == 36 {
-			uuid = arg
-			continue
-		}
-		if arg == "-u" || arg == "--user" {
-			if len(os.Args) == seq + 2 && len(uuid) == 0 || len(os.Args) == seq + 1 {
-				fmt.Println("Please specify a username")
-				os.Exit(1)
-			}
-			username = os.Args[seq + 1]
-		}
+
+	if _, err := uuid.ParseUUID(args[0]); err != nil {
+		fmt.Println("Please specify a valid uuid for the server")
+		os.Exit(1)
 	}
-	if len(uuid) == 0 {
-		fmt.Println("Please specify a uuid")
-	}
-	return uuid, username
-}
-
-func help() {
-	fmt.Println(`usage: osssh [-h] uuid
-
-Port-Forward SSH to a server without FloatingIP via Metadata-Port.
-	
-positional arguments:
-    uuid                UUID of server to SSH into
-
-options:
--h, --help            show this help message and exit
--u, --user username   sets username to connect to HV with`)
-	os.Exit(0)
+	return args[0], username
 }
 
 func GetPidOfNeutronMetadata(c *gossh.Client) (pid int) {
