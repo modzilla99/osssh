@@ -55,13 +55,16 @@ func PortForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortFor
 		for {
 			local, err := listener.Accept()
 			if err != nil {
-				fmt.Println("ERROR", err)
+				if err.Error() == fmt.Sprintf("accept tcp 127.0.0.1:%d: use of closed network connection", port) {
+					break
+				}
+				fmt.Println("Error", err)
 				break
 			}
 
 			remote, err := client.Dial(remoteAddress.Network(), remoteAddress.String())
 			if err != nil {
-				fmt.Println("ERROR", err)
+				fmt.Println("Error", err)
 				break
 			}
 
