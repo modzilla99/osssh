@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	utils "github.com/modzilla99/osssh/internal/general"
 	"github.com/modzilla99/osssh/internal/netnsproxy"
@@ -23,7 +24,7 @@ var remotePids []int
 var hypervisor string
 
 func main() {
-	uuid, username, port := utils.ParseArgs()
+	uuid, username, port, remotePort := utils.ParseArgs()
 	setupCleanup()
 	osc, err := openstack.CreateClient()
 	if err != nil {
@@ -46,7 +47,10 @@ func main() {
 	netnsproxy.Setup(c)
 
 	netns := fmt.Sprintf("/proc/%d/root/run/netns/%s", pid, i.MetadataPort)
-	remotePids = append(remotePids, netnsproxy.PortForwardViaSSH(c, netns, i.IPAddress, 22))
+	remotePids = append(remotePids, netnsproxy.PortForwardViaSSH(c, netns, i.IPAddress, remotePort))
+
+	// Wait for Netns-Proxy to start
+	time.Sleep(time.Second)
 
 	fmt.Print("Setting up local port forwarding...")
 	pfs, err := ssh.PortForward(c, port, generic.AddressPort{

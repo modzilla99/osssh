@@ -6,6 +6,13 @@ Use the magic of NetworkNamespaces and the local MetadataPort to port-forward a 
 
 The code is probably written very poorly as it is my first golang project. It's barely working and should be considered as a PoC.
 
+## Issues
+
+- Cannot create listener sometimes
+- Netnsproxy will not stop on premature exit
+- Netnsproxy compiled against glibc
+- cleanup Routine needs to be refactored
+
 ## Run
 
 ```bash

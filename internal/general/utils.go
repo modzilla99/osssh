@@ -12,13 +12,16 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 )
 
-func ParseArgs() (string, string, int) {
+func ParseArgs() (string, string, int, int) {
 	// Set username, default to the current username of the shell session
 	username, gotUsernameFromEnv := os.LookupEnv("USERNAME")
 	flag.StringVar(&username, "u", username, "sets username to connect to HV with")
 
 	var port int
 	flag.IntVar(&port, "p", 2222, "Port for SSH to locally listen on")
+
+	var remotePort int
+	flag.IntVar(&remotePort, "r", 22, "Remote port to forward traffic to")
 
 	flag.Parse()
 	args := flag.Args()
@@ -38,7 +41,7 @@ func ParseArgs() (string, string, int) {
 		fmt.Println("Please specify a valid uuid for the server")
 		os.Exit(1)
 	}
-	return args[0], username, port
+	return args[0], username, port, remotePort
 }
 
 func GetPidOfNeutronMetadata(c *gossh.Client) (pid int) {
