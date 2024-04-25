@@ -9,39 +9,39 @@ import (
 
 	"github.com/hashicorp/go-uuid"
 	"github.com/modzilla99/osssh/internal/ssh"
+	"github.com/modzilla99/osssh/types/generic"
 	gossh "golang.org/x/crypto/ssh"
 )
 
-func ParseArgs() (string, string, int, int) {
+func ParseArgs() (args generic.Args) {
+	// args := generic.Args{}
 	// Set username, default to the current username of the shell session
 	username, gotUsernameFromEnv := os.LookupEnv("USERNAME")
-	flag.StringVar(&username, "u", username, "sets username to connect to HV with")
+	flag.StringVar(&args.Username, "u", username, "sets username to connect to HV with")
 
-	var port int
-	flag.IntVar(&port, "p", 2222, "Port for SSH to locally listen on")
-
-	var remotePort int
-	flag.IntVar(&remotePort, "r", 22, "Remote port to forward traffic to")
+	flag.IntVar(&args.Port, "p", 2222, "Port for SSH to locally listen on")
+	flag.IntVar(&args.RemotePort, "r", 22, "Remote port to forward traffic to")
 
 	flag.Parse()
-	args := flag.Args()
+	parsedArgs := flag.Args()
 
 	if !gotUsernameFromEnv && username == "" {
 		fmt.Println("Cannot get username from environment, please specify username with -u")
 		os.Exit(1)
 	}
 
-	if len(args) != 1 {
+	if len(parsedArgs) != 1 {
 		fmt.Println("Usage: osssh [-u] uuid")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	if _, err := uuid.ParseUUID(args[0]); err != nil {
+	if _, err := uuid.ParseUUID(parsedArgs[0]); err != nil {
 		fmt.Println("Please specify a valid uuid for the server")
 		os.Exit(1)
 	}
-	return args[0], username, port, remotePort
+	args.UUID = parsedArgs[0]
+	return args
 }
 
 func GetPidOfNeutronMetadata(c *gossh.Client) (pid int) {

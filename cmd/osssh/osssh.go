@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	utils "github.com/modzilla99/osssh/internal/general"
 	"github.com/modzilla99/osssh/internal/netnsproxy"
@@ -23,18 +24,27 @@ var remotePids []int
 var hypervisor string
 
 func main() {
-	uuid, username, port, remotePort := utils.ParseArgs()
+	args := utils.ParseArgs()
 	setupCleanup()
 	osc, err := openstack.CreateClient()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	i, _ := openstack.GetInfo(osc, uuid)
+	i, _ := openstack.GetInfo(osc, args.UUID)
 	fmt.Printf("Obtained the following information %#v\n", i)
 
+	if err := run(i, args); err != nil {
+		fmt.Printf("Error\n%s\n", err)
+		os.Exit(1)
+	}
+}
+
+func run (info *openstack.Info, args generic.Args) error{
+	fmt.Printf("%+v\n", args)
 	fmt.Print("Connecting to SSH...")
-	c, err := ssh.NewClient(i.HypervisorHostname, username)
+	hypervisor = info.HypervisorHostname
+	c, err := ssh.NewClient(hypervisor, args.Username)
 	if err != nil {
 		fmt.Printf("Error\n%s\n", err)
 		os.Exit(1)
@@ -45,25 +55,38 @@ func main() {
 	pid := utils.GetPidOfNeutronMetadata(c)
 	netnsproxy.Setup(c)
 
-	netns := fmt.Sprintf("/proc/%d/root/run/netns/%s", pid, i.MetadataPort)
-	proxyPort, remotePid := netnsproxy.PortForwardViaSSH(c, netns, i.IPAddress, remotePort)
+	netns := fmt.Sprintf("/proc/%d/root/run/netns/%s", pid, info.MetadataPort)
+	proxyPort, remotePid := netnsproxy.PortForwardViaSSH(c, netns, info.IPAddress, args.RemotePort)
 	remotePids = append(remotePids, remotePid)
 
 	fmt.Print("Setting up local port forwarding...")
-	pfs, err := ssh.PortForward(c, port, generic.AddressPort{
+	pfs, err := ssh.PortForward(c, args.Port, generic.AddressPort{
 		Address: "127.0.0.1",
 		Port: proxyPort,
 		Type: "tcp",
 	})
 	if err != nil {
-		fmt.Printf("Error\n%s\n", err)
-		os.Exit(1)
+		if err.Error() == "ssh: rejected: connect failed (Connection refused)" {
+			fmt.Printf("Retrying...")
+			time.Sleep(300 * time.Millisecond)
+			pfs, err = ssh.PortForward(c, args.Port, generic.AddressPort{
+				Address: "127.0.0.1",
+				Port: proxyPort,
+				Type: "tcp",
+			})
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 	defer pfs.Close()
-	fmt.Printf("Done\nForwarding %s:22 from netns %s to 127.0.0.1:%d\n", i.IPAddress, netns, port)
+	fmt.Printf("Done\nForwarding %s:22 from netns %s to 127.0.0.1:%d\n", info.IPAddress, netns, args.Port)
 
 	cha := make(chan struct{})
 	<-cha
+	return nil
 }
 
 func cleanup() {
