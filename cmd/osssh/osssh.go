@@ -31,7 +31,11 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	i, _ := openstack.GetInfo(osc, args.UUID)
+	i, err := openstack.GetInfo(osc, args.UUID)
+	if err != nil {
+		fmt.Printf("Error\n%s\n", err)
+		os.Exit(1)
+	}
 	fmt.Printf("Obtained the following information %#v\n", i)
 
 	if err := run(i, args); err != nil {
@@ -41,7 +45,6 @@ func main() {
 }
 
 func run (info *openstack.Info, args generic.Args) error{
-	fmt.Printf("%+v\n", args)
 	fmt.Print("Connecting to SSH...")
 	hypervisor = info.HypervisorHostname
 	c, err := ssh.NewClient(hypervisor, args.Username)

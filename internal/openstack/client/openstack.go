@@ -61,9 +61,18 @@ func (c *OpenStackClient) GetNovaClient() (*gophercloud.ServiceClient, error) {
 
 func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 	fmt.Print("Fetching data from OpenStack...")
-	n, _ := osc.GetNeutronClient()
-	pS, _ := getNeutronPortByServerID(n, uuid)
-	pD, _ := getNeutronDistributedPortByNetworkID(n, pS.NetworkID)
+	n, err := osc.GetNeutronClient()
+	if err != nil {
+		return nil, err
+	}
+	pS, err := getNeutronPortByServerID(n, uuid)
+	if err != nil {
+		return nil, err
+	}
+	pD, err := getNeutronDistributedPortByNetworkID(n, pS.NetworkID)
+	if err != nil {
+		return nil, err
+	}
 
 	fmt.Println("Done")
 	return &Info{
@@ -77,8 +86,14 @@ func getNeutronPortByServerID(c *gophercloud.ServiceClient, id string) (*neutron
 	s := ports.ListOpts{
 		DeviceID: id,
 	}
-	p, _ := ports.List(c, s).AllPages()
-	ap, _ := extractPorts(p)
+	p, err := ports.List(c, s).AllPages()
+	if err != nil {
+		return nil, err
+	}
+	ap, err := extractPorts(p)
+	if err != nil {
+		return nil, err
+	}
 	if len(ap) == 0 {
 		return nil, fmt.Errorf("no ports found")
 	}
@@ -90,8 +105,14 @@ func getNeutronDistributedPortByNetworkID(c *gophercloud.ServiceClient, id strin
 		NetworkID: id,
 		DeviceOwner: "network:distributed",
 	}
-	pa, _ := ports.List(c, s).AllPages()
-	p, _ := extractPorts(pa)
+	pa, err := ports.List(c, s).AllPages()
+	if err != nil {
+		return nil, err
+	}
+	p, err := extractPorts(pa)
+	if err != nil {
+		return nil, err
+	}
 	if len(p) == 0 {
 		return nil, fmt.Errorf("unable to retrieve distributed port")
 	}
