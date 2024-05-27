@@ -6,7 +6,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	utils "github.com/modzilla99/osssh/internal/general"
 	"github.com/modzilla99/osssh/internal/netnsproxy"
@@ -36,17 +35,19 @@ func main() {
 		fmt.Printf("Error\n%s\n", err)
 		os.Exit(1)
 	}
+	hypervisor = i.HypervisorHostname
 	fmt.Printf("Obtained the following information %#v\n", i)
 
 	if err := run(i, args); err != nil {
-		fmt.Printf("Error\n%s\n", err)
+		fmt.Println("Error")
+		cleanup()
+		fmt.Printf("Error %s\n", err)
 		os.Exit(1)
 	}
 }
 
 func run (info *openstack.Info, args generic.Args) error{
 	fmt.Print("Connecting to SSH...")
-	hypervisor = info.HypervisorHostname
 	c, err := ssh.NewClient(hypervisor, args.Username)
 	if err != nil {
 		fmt.Printf("Error\n%s\n", err)
@@ -69,20 +70,7 @@ func run (info *openstack.Info, args generic.Args) error{
 		Type: "tcp",
 	})
 	if err != nil {
-		if err.Error() == "ssh: rejected: connect failed (Connection refused)" {
-			fmt.Printf("Retrying...")
-			time.Sleep(300 * time.Millisecond)
-			pfs, err = ssh.PortForward(c, args.Port, generic.AddressPort{
-				Address: "127.0.0.1",
-				Port: proxyPort,
-				Type: "tcp",
-			})
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
+		return err
 	}
 	defer pfs.Close()
 	fmt.Printf("Done\nForwarding %s:22 from netns %s to 127.0.0.1:%d\n", info.IPAddress, netns, args.Port)
@@ -106,6 +94,11 @@ func cleanup() {
 }
 
 func cleanupRemoteProcesses(c *gossh.Client) {
+	if len(remotePids) == 0 {
+		fmt.Println("No remote process found, trying to kill all remote processes")
+		cleanupAllRemainingRemoteProcesses(c)
+		return
+	}
     for _, pid := range remotePids {
         _, stderr, err := ssh.RunCommand(c, fmt.Sprintf(`sudo kill -TERM %d`, pid))
         if err != nil {

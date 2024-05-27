@@ -1,9 +1,11 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -36,6 +38,35 @@ func (s *PortForwardSession) Close() error {
 }
 
 func PortForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortForwardSession, error) {
+	sess, err := portForwardRetry(client, port, remoteAddress, 3)
+	if err != nil {
+		return nil, err
+	}
+
+	return sess, nil
+}
+func portForwardRetry(client *ssh.Client, port int, remoteAddress net.Addr, counter int) (*PortForwardSession, error) {
+	if counter <= 0 {
+		return nil, errors.New("too many retries")
+	}
+	var sess *PortForwardSession
+	sess, err := portForward(client, port, remoteAddress)
+	if err != nil {
+		if err.Error() == "ssh: rejected: connect failed (Connection refused)" {
+			fmt.Printf("Retrying...")
+			time.Sleep(300 * time.Millisecond)
+			sess, err = portForwardRetry(client, port, remoteAddress, counter - 1)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
+	return sess, nil
+}
+
+func portForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortForwardSession, error) {
 	remote, err := client.Dial(remoteAddress.Network(), remoteAddress.String())
 	if err != nil {
 		return nil, err
@@ -80,8 +111,6 @@ func PortForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortFor
 			done <- struct{}{}
 			}()
 		
-			<-done
-
 			if pfs.initSessionClose {
 				fmt.Println("Closed local port")
 				break

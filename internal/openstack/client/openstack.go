@@ -3,9 +3,12 @@ package openstack
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/utils/v2/openstack/clientconfig"
+	"github.com/modzilla99/osssh/types/openstack/neutron"
+	"github.com/modzilla99/osssh/types/openstack/nova"
 )
 
 type Info struct {
@@ -46,35 +49,69 @@ func authenticate(o *clientconfig.ClientOpts) (provider *gophercloud.ProviderCli
 }
 
 func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
+	var (
+		wg sync.WaitGroup
+		s *nova.Server
+		serverPort *neutron.Port
+		metadataPort *neutron.Port
+		nova *gophercloud.ServiceClient
+		neutron *gophercloud.ServiceClient
+		err error
+		errs []error
+	)
+
+
 	fmt.Print("Fetching data from OpenStack...")
-	neutron, err := osc.GetNeutronClient()
+	neutron, err = osc.GetNeutronClient()
 	if err != nil {
 		return nil, err
 	}
 
-	nova, err := osc.GetNovaClient()
+	nova, err = osc.GetNovaClient()
 	if err != nil {
 		return nil, err
 	}
 
-	s, err := getServerByID(nova, uuid)
-	if err != nil {
-		return nil, err
-	}
+	wg.Add(1)
+	go func () {
+		var er error
+		defer wg.Done()
+		s, er = getServerByID(nova, uuid)
+		if er != nil {
+			errs = append(errs, er)
+		}
+	}()
 
-	pS, err := getNeutronPortByServerID(neutron, uuid)
-	if err != nil {
-		return nil, err
-	}
-	pD, err := getNeutronDistributedPortByNetworkID(neutron, pS.NetworkID)
-	if err != nil {
-		return nil, err
+	wg.Add(1)
+	go func () {
+		var er error
+		defer wg.Done()
+		serverPort, er = getNeutronPortByServerID(neutron, uuid)
+		if er != nil {
+			errs = append(errs, er)
+			return
+		}
+		metadataPort, er = getNeutronDistributedPortByNetworkID(neutron, serverPort.NetworkID)
+		if er != nil {
+			errs = append(errs, er)
+		}
+	}()
+
+	wg.Wait()
+	if len(errs) == 1 {
+		return nil, errs[0]
+	} else if len(errs) > 0 {
+		fmt.Println("MultipleErrors")
+		for _, err := range errs {
+			fmt.Println(err)
+		}
+		return nil, errs[0]
 	}
 
 	fmt.Println("Done")
 	return &Info{
-		IPAddress: pS.FixedIPs[0].IPAddress,
+		IPAddress: serverPort.FixedIPs[0].IPAddress,
 		HypervisorHostname: getHypervisorFromServer(s),
-		MetadataPort: pD.DeviceID,
+		MetadataPort: metadataPort.DeviceID,
 	}, nil
 }
