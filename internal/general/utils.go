@@ -16,7 +16,7 @@ import (
 func ParseArgs() (args generic.Args) {
 	// args := generic.Args{}
 	// Set username, default to the current username of the shell session
-	username, gotUsernameFromEnv := os.LookupEnv("USERNAME")
+	username, _ := os.LookupEnv("USER")
 	flag.StringVar(&args.Username, "u", username, "sets username to connect to HV with")
 
 	flag.IntVar(&args.Port, "p", 2222, "Port for SSH to locally listen on")
@@ -25,7 +25,7 @@ func ParseArgs() (args generic.Args) {
 	flag.Parse()
 	parsedArgs := flag.Args()
 
-	if !gotUsernameFromEnv && username == "" {
+	if args.Username == "" {
 		fmt.Println("Cannot get username from environment, please specify username with -u")
 		os.Exit(1)
 	}
