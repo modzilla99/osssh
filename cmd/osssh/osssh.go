@@ -19,11 +19,15 @@ type Process interface {
 	Close() error
 }
 
-var remotePids []int
-var hypervisor string
+var (
+	remotePids []int
+	hypervisor string
+	username string
+)
 
 func main() {
 	args := utils.ParseArgs()
+	username = args.Username
 	setupCleanup()
 	osc, err := openstack.CreateClient()
 	if err != nil {
@@ -46,7 +50,7 @@ func main() {
 	}
 }
 
-func run (info *openstack.Info, args generic.Args) error{
+func run (info *openstack.Info, args generic.Args) error {
 	fmt.Print("Connecting to SSH...")
 	c, err := ssh.NewClient(hypervisor, args.Username)
 	if err != nil {
@@ -81,7 +85,7 @@ func run (info *openstack.Info, args generic.Args) error{
 }
 
 func cleanup() {
-    c, err := ssh.NewClient(hypervisor, "jlamp")
+    c, err := ssh.NewClient(hypervisor, username)
     if err != nil {
         fmt.Printf("Error creating SSH client: %s\n", err)
 		panic(err.Error())

@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -50,9 +51,12 @@ func NewClient(hostname string, username string) (*ssh.Client, error) {
     // Connect
     client, err := ssh.Dial("tcp", net.JoinHostPort(hostname, "22"), config)
     if err != nil {
+		if err.Error() == "ssh: handshake failed: knownhosts: key is unknown" {
+			fmt.Printf("Error\n\nCould not verify host key of %s, please add it to your known_hosts file by connecting to it with SSH\n", hostname)
+			os.Exit(1)
+		}
         return nil, err
     }
-
 	return client, nil
 }
 
