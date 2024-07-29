@@ -40,7 +40,6 @@ func main() {
 		os.Exit(1)
 	}
 	hypervisor = i.HypervisorHostname
-	fmt.Printf("Obtained the following information %#v\n", i)
 
 	if err := run(i, args); err != nil {
 		fmt.Println("Error")

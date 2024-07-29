@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack"
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servers"
-	"github.com/gophercloud/utils/v2/openstack/clientconfig"
 	"github.com/modzilla99/osssh/types/openstack/nova"
 )
 
 func (c *OpenStackClient) GetNovaClient() (*gophercloud.ServiceClient, error) {
-	return clientconfig.NewServiceClient(context.Background(), "compute", c.auth)
+	return openstack.NewComputeV2(c.ProviderClient, gophercloud.EndpointOpts{})
 }
 
 func getServerByID(c *gophercloud.ServiceClient, id string) (*nova.Server, error) {

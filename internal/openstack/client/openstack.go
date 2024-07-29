@@ -1,12 +1,12 @@
 package openstack
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/utils/v2/openstack/clientconfig"
+	"github.com/modzilla99/osssh/internal/openstack/auth"
 	"github.com/modzilla99/osssh/types/openstack/neutron"
 	"github.com/modzilla99/osssh/types/openstack/nova"
 )
@@ -24,8 +24,8 @@ type OpenStackClient struct {
 
 func CreateClient() (*OpenStackClient, error) {
 	fmt.Print("Authenticating to OpenStack...")
-	opts := new(clientconfig.ClientOpts)
-	provider, err := authenticate(opts)
+	opts := &clientconfig.ClientOpts{}
+	provider, err:= auth.Authenticate(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -34,18 +34,6 @@ func CreateClient() (*OpenStackClient, error) {
 		ProviderClient: provider,
 		auth: opts,
 	}, nil
-}
-
-func authenticate(o *clientconfig.ClientOpts) (provider *gophercloud.ProviderClient, err error) {
-	provider, err = clientconfig.AuthenticatedClient(context.Background(), o)
-	if err != nil {
-		if err.Error() == "You must provide exactly one of DomainID or DomainName in a Scope with ProjectName" {
-			o.AuthInfo.DomainName = "default"
-			return clientconfig.AuthenticatedClient(context.Background(), o)
-		}
-		return nil, err
-	}
-	return provider, nil
 }
 
 func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
