@@ -13,41 +13,40 @@ import (
 
 type Info struct {
 	HypervisorHostname string
-	IPAddress string
-	MetadataPort string
-} 
+	IPAddress          string
+	MetadataPort       string
+}
 
 type OpenStackClient struct {
 	ProviderClient *gophercloud.ProviderClient
-	auth *clientconfig.ClientOpts
+	auth           *clientconfig.ClientOpts
 }
 
 func CreateClient() (*OpenStackClient, error) {
 	fmt.Print("Authenticating to OpenStack...")
 	opts := &clientconfig.ClientOpts{}
-	provider, err:= auth.Authenticate(opts)
+	provider, err := auth.Authenticate(opts)
 	if err != nil {
 		return nil, err
 	}
 	fmt.Println("Done")
 	return &OpenStackClient{
 		ProviderClient: provider,
-		auth: opts,
+		auth:           opts,
 	}, nil
 }
 
 func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 	var (
-		wg sync.WaitGroup
-		s *nova.Server
-		serverPort *neutron.Port
+		wg           sync.WaitGroup
+		s            *nova.Server
+		serverPort   *neutron.Port
 		metadataPort *neutron.Port
-		nova *gophercloud.ServiceClient
-		neutron *gophercloud.ServiceClient
-		err error
-		errs []error
+		nova         *gophercloud.ServiceClient
+		neutron      *gophercloud.ServiceClient
+		err          error
+		errs         []error
 	)
-
 
 	fmt.Print("Fetching data from OpenStack...")
 	neutron, err = osc.GetNeutronClient()
@@ -61,7 +60,7 @@ func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 	}
 
 	wg.Add(1)
-	go func () {
+	go func() {
 		var er error
 		defer wg.Done()
 		s, er = getServerByID(nova, uuid)
@@ -71,7 +70,7 @@ func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 	}()
 
 	wg.Add(1)
-	go func () {
+	go func() {
 		var er error
 		defer wg.Done()
 		serverPort, er = getNeutronPortByServerID(neutron, uuid)
@@ -98,8 +97,8 @@ func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 
 	fmt.Println("Done")
 	return &Info{
-		IPAddress: serverPort.FixedIPs[0].IPAddress,
+		IPAddress:          serverPort.FixedIPs[0].IPAddress,
 		HypervisorHostname: getHypervisorFromServer(s),
-		MetadataPort: metadataPort.DeviceID,
+		MetadataPort:       metadataPort.DeviceID,
 	}, nil
 }

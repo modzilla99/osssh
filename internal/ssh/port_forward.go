@@ -11,17 +11,17 @@ import (
 )
 
 type PortForwardSession struct {
-	Listener *net.Listener
-	Remote *net.Conn
-	sessionOpen bool
+	Listener         *net.Listener
+	Remote           *net.Conn
+	sessionOpen      bool
 	initSessionClose bool
 }
 
 func newPortForwardSession(listener *net.Listener, remote *net.Conn) *PortForwardSession {
 	return &PortForwardSession{
-		Listener: listener,
-		Remote: remote,
-		sessionOpen: true,
+		Listener:         listener,
+		Remote:           remote,
+		sessionOpen:      true,
 		initSessionClose: false,
 	}
 }
@@ -31,7 +31,7 @@ func (s *PortForwardSession) Close() error {
 	(*s.Remote).Close()
 	s.initSessionClose = true
 	for {
-		if ! s.sessionOpen {
+		if !s.sessionOpen {
 			return nil
 		}
 	}
@@ -55,7 +55,7 @@ func portForwardRetry(client *ssh.Client, port int, remoteAddress net.Addr, coun
 		if err.Error() == "ssh: rejected: connect failed (Connection refused)" {
 			fmt.Printf("Retrying...")
 			time.Sleep(300 * time.Millisecond)
-			sess, err = portForwardRetry(client, port, remoteAddress, counter - 1)
+			sess, err = portForwardRetry(client, port, remoteAddress, counter-1)
 			if err != nil {
 				return nil, err
 			}
@@ -100,17 +100,17 @@ func portForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortFor
 			}
 
 			done := make(chan struct{}, 2)
-		
+
 			go func() {
-			io.Copy(local, remote)
-			done <- struct{}{}
+				io.Copy(local, remote)
+				done <- struct{}{}
 			}()
-		
+
 			go func() {
-			io.Copy(remote, local)
-			done <- struct{}{}
+				io.Copy(remote, local)
+				done <- struct{}{}
 			}()
-		
+
 			if pfs.initSessionClose {
 				fmt.Println("Closed local port")
 				break

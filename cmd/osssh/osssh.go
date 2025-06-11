@@ -22,7 +22,7 @@ type Process interface {
 var (
 	remotePids []int
 	hypervisor string
-	username string
+	username   string
 )
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	}
 }
 
-func run (info *openstack.Info, args generic.Args) error {
+func run(info *openstack.Info, args generic.Args) error {
 	fmt.Print("Connecting to SSH...")
 	c, err := ssh.NewClient(hypervisor, args.Username)
 	if err != nil {
@@ -69,8 +69,8 @@ func run (info *openstack.Info, args generic.Args) error {
 	fmt.Print("Setting up local port forwarding...")
 	pfs, err := ssh.PortForward(c, args.Port, generic.AddressPort{
 		Address: "127.0.0.1",
-		Port: proxyPort,
-		Type: "tcp",
+		Port:    proxyPort,
+		Type:    "tcp",
 	})
 	if err != nil {
 		return err
@@ -84,16 +84,16 @@ func run (info *openstack.Info, args generic.Args) error {
 }
 
 func cleanup() {
-    c, err := ssh.NewClient(hypervisor, username)
-    if err != nil {
-        fmt.Printf("Error creating SSH client: %s\n", err)
+	c, err := ssh.NewClient(hypervisor, username)
+	if err != nil {
+		fmt.Printf("Error creating SSH client: %s\n", err)
 		panic(err.Error())
-    }
-    defer c.Close()
+	}
+	defer c.Close()
 
 	fmt.Println("Cleaning up...")
-    cleanupRemoteProcesses(c)
-    fmt.Println("Cleanup complete.")
+	cleanupRemoteProcesses(c)
+	fmt.Println("Cleanup complete.")
 }
 
 func cleanupRemoteProcesses(c *gossh.Client) {
@@ -102,37 +102,37 @@ func cleanupRemoteProcesses(c *gossh.Client) {
 		cleanupAllRemainingRemoteProcesses(c)
 		return
 	}
-    for _, pid := range remotePids {
-        _, stderr, err := ssh.RunCommand(c, fmt.Sprintf(`sudo kill -TERM %d`, pid))
-        if err != nil {
-            fmt.Printf("Error cleaning up all remote netns-proxy processes: %d\n%s\n", pid, err)
-            if strings.Contains(stderr, "No such process") {
-                cleanupAllRemainingRemoteProcesses(c)
-                return
-            }
-        }
-    }
+	for _, pid := range remotePids {
+		_, stderr, err := ssh.RunCommand(c, fmt.Sprintf(`sudo kill -TERM %d`, pid))
+		if err != nil {
+			fmt.Printf("Error cleaning up all remote netns-proxy processes: %d\n%s\n", pid, err)
+			if strings.Contains(stderr, "No such process") {
+				cleanupAllRemainingRemoteProcesses(c)
+				return
+			}
+		}
+	}
 }
 
 func cleanupAllRemainingRemoteProcesses(c *gossh.Client) {
-    _, stderr, err := ssh.RunCommand(c, `sudo killall -TERM /tmp/netns-proxy`)
-    if strings.Contains(stderr, "no process found") {
-        fmt.Println("All netns-proxies are already stopped")
-        return
-    }
-    if err != nil {
-        fmt.Println("Error killing remaining netns-proxy processes")
+	_, stderr, err := ssh.RunCommand(c, `sudo killall -TERM /tmp/netns-proxy`)
+	if strings.Contains(stderr, "no process found") {
+		fmt.Println("All netns-proxies are already stopped")
+		return
+	}
+	if err != nil {
+		fmt.Println("Error killing remaining netns-proxy processes")
 		panic(err.Error())
-    }
-    fmt.Println("Killed all remaining netns-proxy processes")
+	}
+	fmt.Println("Killed all remaining netns-proxy processes")
 }
 
 func setupCleanup() {
-    cleaner := make(chan os.Signal, 1)
-    signal.Notify(cleaner, os.Interrupt, syscall.SIGTERM)
-    go func() {
-        <-cleaner
-        cleanup()
-        os.Exit(0)
-    }()
+	cleaner := make(chan os.Signal, 1)
+	signal.Notify(cleaner, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-cleaner
+		cleanup()
+		os.Exit(0)
+	}()
 }

@@ -64,16 +64,16 @@ func PortForward(client *gossh.Client, netns string, localPort int, remote net.A
 }
 
 func checkPortAvailability(c *gossh.Client, port int) (available bool, err error) {
-	_,_, err = ssh.RunCommand(c, fmt.Sprintf("nc -z 127.0.0.1 %d", port))
+	_, _, err = ssh.RunCommand(c, fmt.Sprintf("nc -z 127.0.0.1 %d", port))
 	if err != nil {
 		switch err := err.(type) {
-			case *gossh.ExitError:
-				if err.ExitStatus() == 1 {
-					return true, nil
-				}
-				return false, err
-			default:
-				return false, err
+		case *gossh.ExitError:
+			if err.ExitStatus() == 1 {
+				return true, nil
+			}
+			return false, err
+		default:
+			return false, err
 		}
 	}
 	return false, nil
@@ -86,7 +86,7 @@ func PortForwardViaSSH(c *gossh.Client, path string, address string, port int) (
 	proxyPort = 3022
 	ok := false
 	var err error
-	for ! ok {
+	for !ok {
 		if proxyPort >= 4000 {
 			fmt.Println("Error")
 			fmt.Println("Unable to find available port on remote...")
@@ -102,8 +102,8 @@ func PortForwardViaSSH(c *gossh.Client, path string, address string, port int) (
 
 	remotePid, err = PortForward(c, path, proxyPort, generic.AddressPort{
 		Address: address,
-		Port: port,
-		Type: "tcp",
+		Port:    port,
+		Type:    "tcp",
 	})
 	if err != nil {
 		fmt.Println()

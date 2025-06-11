@@ -35,7 +35,7 @@ func getNeutronPortByServerID(c *gophercloud.ServiceClient, id string) (*neutron
 
 func getNeutronDistributedPortByNetworkID(c *gophercloud.ServiceClient, id string) (*neutron.Port, error) {
 	s := ports.ListOpts{
-		NetworkID: id,
+		NetworkID:   id,
 		DeviceOwner: "network:distributed",
 	}
 	pa, err := ports.List(c, s).AllPages(context.TODO())

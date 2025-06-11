@@ -38,25 +38,25 @@ func NewClient(hostname string, username string) (*ssh.Client, error) {
 	}
 
 	// Authentication
-    config := &ssh.ClientConfig{
-        User: username,
-        Auth: []ssh.AuthMethod{pkAuth},
-        HostKeyCallback: hostKey,
+	config := &ssh.ClientConfig{
+		User:            username,
+		Auth:            []ssh.AuthMethod{pkAuth},
+		HostKeyCallback: hostKey,
 		HostKeyAlgorithms: []string{
 			ssh.KeyAlgoED25519,
 			ssh.KeyAlgoRSASHA512,
 			ssh.KeyAlgoRSASHA256,
 		},
-    }
-    // Connect
-    client, err := ssh.Dial("tcp", net.JoinHostPort(hostname, "22"), config)
-    if err != nil {
+	}
+	// Connect
+	client, err := ssh.Dial("tcp", net.JoinHostPort(hostname, "22"), config)
+	if err != nil {
 		if err.Error() == "ssh: handshake failed: knownhosts: key is unknown" {
 			fmt.Printf("Error\n\nCould not verify host key of %s, please add it to your known_hosts file by connecting to it with SSH\n", hostname)
 			os.Exit(1)
 		}
-        return nil, err
-    }
+		return nil, err
+	}
 	return client, nil
 }
 
@@ -109,7 +109,7 @@ func RunCommandBackground(client *ssh.Client, cmd string) (*SshBackgroundTask, e
 	return &SshBackgroundTask{session: s}, nil
 }
 
-func WriteFile(client *ssh.Client, fileName string, file []byte) (error) {
+func WriteFile(client *ssh.Client, fileName string, file []byte) error {
 	stdin := base64.StdEncoding.EncodeToString(file)
 	s, err := GetSession(client)
 	if err != nil {
@@ -125,7 +125,7 @@ func WriteFile(client *ssh.Client, fileName string, file []byte) (error) {
 
 func ConnectSSHAgentSock() (*net.Conn, error) {
 	agentPath, exist := os.LookupEnv("SSH_AUTH_SOCK")
-	if ! exist {
+	if !exist {
 		log.Fatalln("SSH-Agent is not running, unable to authenticate...")
 	}
 	// Connect to ssh-agent socket

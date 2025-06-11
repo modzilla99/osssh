@@ -4,8 +4,8 @@ import "fmt"
 
 type AddressPort struct {
 	Address string
-	Port int
-	Type string
+	Port    int
+	Type    string
 }
 
 func (a AddressPort) String() string {
