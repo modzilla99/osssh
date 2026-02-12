@@ -88,29 +88,6 @@ func RunCommand(client *ssh.Client, cmd string) (string, string, error) {
 	return strings.TrimSuffix(stdout.String(), "\n"), strings.TrimSuffix(stderr.String(), "\n"), err
 }
 
-type SshBackgroundTask struct {
-	session *ssh.Session
-}
-
-func (t *SshBackgroundTask) Close() error {
-	t.session.Signal(ssh.SIGTERM)
-	t.session.Close()
-	return nil
-}
-
-func RunCommandBackground(client *ssh.Client, cmd string) (*SshBackgroundTask, error) {
-	s, err := GetSession(client)
-	if err != nil {
-		return nil, err
-	}
-	// s.Shell()
-	go func() {
-		s.Run(cmd)
-	}()
-
-	return &SshBackgroundTask{session: s}, nil
-}
-
 func WriteFile(client *ssh.Client, fileName string, file []byte) error {
 	stdin := base64.StdEncoding.EncodeToString(file)
 	s, err := GetSession(client)

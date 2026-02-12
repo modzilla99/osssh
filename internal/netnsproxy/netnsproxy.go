@@ -174,17 +174,3 @@ func GetAvailablePort(c *gossh.Client) (proxyPort int, err error) {
 	}
 	return proxyPort, err
 }
-
-func PortForwardToNetns(ctx context.Context, doneCh chan struct{}, c *gossh.Client, opts NetnsProxyOpts) {
-	fmt.Print("Setting up remote port forwarding...")
-
-	// Get next available port as multiple netnsproxy instances might be running on remote
-	err := RunNetnsProxy(ctx, c, opts)
-	if err != nil {
-		fmt.Println(err)
-		close(doneCh)
-		return
-	}
-
-	close(doneCh)
-}

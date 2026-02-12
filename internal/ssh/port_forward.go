@@ -1,147 +1,67 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
-	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-type PortForwardSession struct {
-	Listener         *net.Listener
-	Remote           *net.Conn
-	sessionOpen      bool
-	initSessionClose bool
-}
-
-func newPortForwardSession(listener *net.Listener, remote *net.Conn) *PortForwardSession {
-	return &PortForwardSession{
-		Listener:         listener,
-		Remote:           remote,
-		sessionOpen:      true,
-		initSessionClose: false,
-	}
-}
-
-func (s *PortForwardSession) Close() error {
-	(*s.Listener).Close()
-	(*s.Remote).Close()
-	s.initSessionClose = true
-	for {
-		if !s.sessionOpen {
-			return nil
-		}
-	}
-}
-
-func PortForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortForwardSession, error) {
-	sess, err := portForwardRetry(client, port, remoteAddress, 3)
-	if err != nil {
-		return nil, err
-	}
-
-	return sess, nil
-}
-
-type RetryBackOff struct {
-	mod     int
-	timeout int
-	retry   int
-}
-
-func NewRetryBackOff(retry int) *RetryBackOff {
-	return &RetryBackOff{
-		mod:     2,
-		timeout: 2,
-		retry:   retry,
-	}
-}
-
-func (r *RetryBackOff) RunWithRetry(f func() error) error {
-	t := r.timeout
-	var err error
-	for retry := r.retry; retry > 0; retry-- {
-		err = f()
-		if err == nil {
-			return nil
-		}
-		fmt.Print("Retrying...")
-
-		time.Sleep(time.Duration(t) * time.Second)
-		t = t ^ r.mod
-	}
-	return err
-}
-
-func portForwardRetry(client *ssh.Client, port int, remoteAddress net.Addr, counter int) (*PortForwardSession, error) {
-	var sess *PortForwardSession
-
-	r := NewRetryBackOff(counter)
-
-	err := r.RunWithRetry(func() error {
-		var err error
-		sess, err = portForward(client, port, remoteAddress)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return sess, nil
-}
-
-func portForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortForwardSession, error) {
-	remote, err := client.Dial(remoteAddress.Network(), remoteAddress.String())
-	if err != nil {
-		return nil, err
-	}
-
+func PortForward(ctx context.Context, client *ssh.Client, port int, remoteAddress net.Addr) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		return nil, err
+		return err
 	}
+	defer listener.Close()
 
-	pfs := newPortForwardSession(
-		&listener,
-		&remote,
-	)
+	for {
+		var local net.Conn
+		newConn := make(chan struct{})
+		go func() {
+			local, err = listener.Accept()
+			close(newConn)
+		}()
 
-	go func() {
-		for {
-			local, err := listener.Accept()
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled")
+		case <-newConn:
 			if err != nil {
 				if err.Error() == fmt.Sprintf("accept tcp 127.0.0.1:%d: use of closed network connection", port) {
 					break
 				}
 				fmt.Println("Error", err)
-				break
-			}
-
-			remote, err := client.Dial(remoteAddress.Network(), remoteAddress.String())
-			if err != nil {
-				fmt.Println("Error", err)
-				break
-			}
-
-			done := make(chan struct{}, 2)
-
-			go func() {
-				io.Copy(local, remote)
-				done <- struct{}{}
-			}()
-
-			go func() {
-				io.Copy(remote, local)
-				done <- struct{}{}
-			}()
-
-			if pfs.initSessionClose {
-				fmt.Println("Closed local port")
-				break
+				return err
 			}
 		}
-		pfs.sessionOpen = false
+
+		err = handleNewConnection(client, local, remoteAddress)
+		if err != nil {
+			fmt.Println("Error", err)
+			break
+		}
+	}
+
+	return nil
+}
+
+func handleNewConnection(client *ssh.Client, local net.Conn, remoteAddress net.Addr) error {
+	remote, err := client.Dial(remoteAddress.Network(), remoteAddress.String())
+	if err != nil {
+		return err
+	}
+	done := make(chan struct{}, 2)
+
+	go func() {
+		io.Copy(local, remote)
+		done <- struct{}{}
 	}()
-	return pfs, nil
+
+	go func() {
+		io.Copy(remote, local)
+		done <- struct{}{}
+	}()
+	return nil
 }

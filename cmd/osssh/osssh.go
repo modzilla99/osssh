@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	utils "github.com/modzilla99/osssh/internal/general"
@@ -13,6 +12,7 @@ import (
 	openstack "github.com/modzilla99/osssh/internal/openstack/client"
 	"github.com/modzilla99/osssh/internal/ssh"
 	"github.com/modzilla99/osssh/types/generic"
+	"golang.org/x/sync/errgroup"
 )
 
 type Process interface {
@@ -48,6 +48,10 @@ func main() {
 }
 
 func run(ctx context.Context, info *openstack.Info, args generic.Args) error {
+	var cancel context.CancelFunc
+	ctx, cancel = signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	defer cancel()
+
 	fmt.Print("Connecting to SSH...")
 	c, err := ssh.NewClient(hypervisor, args.Username)
 	if err != nil {
@@ -71,57 +75,38 @@ func run(ctx context.Context, info *openstack.Info, args generic.Args) error {
 	if err != nil {
 		return err
 	}
+	group, ctx := errgroup.WithContext(ctx)
 
-	doneChan := make(chan struct{})
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithCancel(ctx)
-	setupCleanup(cancel, doneChan)
-
-	go netnsproxy.PortForwardToNetns(ctx, doneChan, c, netnsproxy.NetnsProxyOpts{
-		ListenPort: proxyPort,
-		Address:    info.IPAddress,
-		Path:       path,
-		ProxyPort:  args.RemotePort,
+	group.Go(func() error {
+		fmt.Print("Setting up remote port forwarding...")
+		return netnsproxy.RunNetnsProxy(ctx, c, netnsproxy.NetnsProxyOpts{
+			ListenPort: proxyPort,
+			Address:    info.IPAddress,
+			Path:       path,
+			ProxyPort:  args.RemotePort,
+		})
 	})
 
 	time.Sleep(200 * time.Millisecond)
 	select {
-	case <-doneChan:
+	case <-ctx.Done():
 		return fmt.Errorf("failed to setup port-forwarding")
 	default:
 		println("Done")
 	}
 
 	fmt.Print("Setting up local port forwarding...")
-	pfs, err := ssh.PortForward(c, args.Port, generic.AddressPort{
-		Address: "127.0.0.1",
-		Port:    proxyPort,
-		Type:    "tcp",
+
+	group.Go(func() error {
+		return ssh.PortForward(ctx, c, args.Port, generic.AddressPort{
+			Address: "127.0.0.1",
+			Port:    proxyPort,
+			Type:    "tcp",
+		})
 	})
-	if err != nil {
-		select {
-		case <-doneChan:
-			return err
-		default:
-			close(doneChan)
-		}
-		return err
-	}
-	defer pfs.Close()
+
 	fmt.Printf("Done\nForwarding %s:%d (%s on %s) from network %s to 127.0.0.1:%d\n",
 		info.IPAddress, args.RemotePort, info.ServerName, info.HypervisorHostname, info.NetworkID, args.Port)
 
-	<-doneChan
-	return nil
-}
-
-func setupCleanup(cancel context.CancelFunc, done chan struct{}) {
-	cleaner := make(chan os.Signal, 1)
-	signal.Notify(cleaner, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-cleaner
-		cancel()
-		<-done
-		os.Exit(0)
-	}()
+	return group.Wait()
 }
