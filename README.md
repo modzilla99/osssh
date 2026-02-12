@@ -4,7 +4,6 @@ Use the magic of NetworkNamespaces and the local MetadataPort to port-forward a 
 
 ## Issues
 
-- Netnsproxy will not stop on premature exit
 - Netnsproxy compiled against glibc
 
 ## Run
