@@ -31,7 +31,7 @@ func getNeutronPortByServerID(ctx context.Context, c *gophercloud.ServiceClient,
 	}
 
 	if len(ps) == 0 {
-		return  nil, errors.New("no port found for server with id: " + id)
+		return nil, errors.New("no port found for server with id: " + id)
 	}
 	return &ps[0], nil
 }

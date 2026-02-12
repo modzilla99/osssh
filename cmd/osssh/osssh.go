@@ -79,12 +79,12 @@ func run(ctx context.Context, info *openstack.Info, args generic.Args) error {
 
 	go netnsproxy.PortForwardToNetns(ctx, doneChan, c, netnsproxy.NetnsProxyOpts{
 		ListenPort: proxyPort,
-		Address: info.IPAddress,
-		Path: path,
-		ProxyPort: args.RemotePort,
+		Address:    info.IPAddress,
+		Path:       path,
+		ProxyPort:  args.RemotePort,
 	})
 
-	time.Sleep(200 *time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	select {
 	case <-doneChan:
 		return fmt.Errorf("failed to setup port-forwarding")

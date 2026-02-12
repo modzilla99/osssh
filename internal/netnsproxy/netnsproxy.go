@@ -49,12 +49,11 @@ func GetNetnsProxyFileBytes(old bool) ([]byte, error) {
 	return files.ReadFile(fileName)
 }
 
-
 type NetnsProxyOpts struct {
-	Path string
-	Address string
+	Path       string
+	Address    string
 	ListenPort int
-	ProxyPort int
+	ProxyPort  int
 }
 
 const bashWrapper = `run_me() {
@@ -67,7 +66,7 @@ trap "kill -INT $PID || kill -TERM $PID" INT TERM
 wait $PID
 `
 
-func (o NetnsProxyOpts) Command () string {
+func (o NetnsProxyOpts) Command() string {
 	exec := fmt.Sprintf("/usr/bin/sudo /tmp/netns-proxy -b 127.0.0.1:%d -p %s %s %s:%d",
 		o.ListenPort, "tcp", o.Path, o.Address, o.ProxyPort,
 	)
@@ -117,14 +116,19 @@ func RunNetnsProxy(ctx context.Context, client *gossh.Client, opts NetnsProxyOpt
 				switch t := err.(type) {
 				case *gossh.ExitError:
 					if t.ExitStatus() == 130 {
+						fmt.Println("Done")
 						return nil
 					}
+					fmt.Println("Error")
+					return fmt.Errorf("netnsproxy exited with unexpected code")
 				default:
+					fmt.Println("Error")
 				}
 				return fmt.Errorf("error waiting for process to finish: %w", err)
 			}
 		case <-timeout.C:
-			return fmt.Errorf("timeout reached stopping netsproxy")
+			fmt.Println("Error")
+			return fmt.Errorf("timeout reached stopping netnsproxy")
 		}
 	}
 	return nil
@@ -170,7 +174,6 @@ func GetAvailablePort(c *gossh.Client) (proxyPort int, err error) {
 	}
 	return proxyPort, err
 }
-
 
 func PortForwardToNetns(ctx context.Context, doneCh chan struct{}, c *gossh.Client, opts NetnsProxyOpts) {
 	fmt.Print("Setting up remote port forwarding...")
