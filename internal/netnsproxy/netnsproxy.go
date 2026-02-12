@@ -97,8 +97,8 @@ func RunNetnsProxy(ctx context.Context, client *gossh.Client, opts NetnsProxyOpt
 	}()
 
 	select {
-	case err := <-waitChan:
-		return fmt.Errorf("program exited unexpectedly: %w", err)
+	case <-waitChan:
+		return fmt.Errorf("netnsproxy exited unexpectedly")
 
 	case <-ctx.Done():
 		fmt.Print("Shutting down remote netnsproxy...")
@@ -130,8 +130,8 @@ func RunNetnsProxy(ctx context.Context, client *gossh.Client, opts NetnsProxyOpt
 	return nil
 }
 
-func checkPortAvailability(c *gossh.Client, port int) (available bool, err error) {
-	_, _, err = ssh.RunCommand(c, fmt.Sprintf("nc -z 127.0.0.1 %d", port))
+func checkPortAvailability(c *gossh.Client, port int) (bool, error) {
+	_, _, err := ssh.RunCommand(c, fmt.Sprintf("nc -z 127.0.0.1 %d", port))
 	if err != nil {
 		switch err := err.(type) {
 		case *gossh.ExitError:
@@ -149,12 +149,14 @@ func checkPortAvailability(c *gossh.Client, port int) (available bool, err error
 func GetAvailablePort(c *gossh.Client) (proxyPort int, err error) {
 	var portOk bool
 	const (
-		proxyPortStart = 3022
+		proxyPortStart = 3021 // + 1
 		proxyPortEnd   = 3052
 	)
 
 	proxyPort = proxyPortStart
 	for !portOk {
+		proxyPort = proxyPort + 1
+
 		if proxyPort >= proxyPortEnd {
 			err = fmt.Errorf("cannot find available port between: %d - %d", proxyPortStart, proxyPortEnd)
 			break
@@ -162,10 +164,9 @@ func GetAvailablePort(c *gossh.Client) (proxyPort int, err error) {
 
 		portOk, err = checkPortAvailability(c, proxyPort)
 		if err != nil {
-			err = fmt.Errorf("unable to check for available ports: %w", err)
+			err = fmt.Errorf("unable to check for available ports: %w\n", err)
 			break
 		}
-		proxyPort = proxyPort + 1
 	}
 	return proxyPort, err
 }
@@ -177,7 +178,6 @@ func PortForwardToNetns(ctx context.Context, doneCh chan struct{}, c *gossh.Clie
 	// Get next available port as multiple netnsproxy instances might be running on remote
 	err := RunNetnsProxy(ctx, c, opts)
 	if err != nil {
-		fmt.Println("Error")
 		fmt.Println(err)
 		close(doneCh)
 		return
