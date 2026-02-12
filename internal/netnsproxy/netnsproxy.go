@@ -1,14 +1,12 @@
 package netnsproxy
 
 import (
+	"context"
 	"embed"
 	"fmt"
-	"net"
-	"os"
-	"strconv"
+	"time"
 
 	"github.com/modzilla99/osssh/internal/ssh"
-	"github.com/modzilla99/osssh/types/generic"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -17,17 +15,27 @@ var (
 	files embed.FS
 )
 
-func Setup(c *gossh.Client) {
+func Setup(c *gossh.Client) error {
 	fmt.Print("Uploading netns-proxy...")
 	file, _ := GetNetnsProxyFileBytes(true)
 	_, _, err := ssh.RunCommand(c, "test -e /tmp/netns-proxy")
-	if err != nil {
-		ssh.WriteFile(c, "/tmp/netns-proxy", file)
-		ssh.RunCommand(c, "chmod +x /tmp/netns-proxy")
-		fmt.Println("Done")
-	} else {
+	if err == nil {
 		fmt.Println("Ok")
+		return nil
 	}
+
+	err = ssh.WriteFile(c, "/tmp/netns-proxy", file)
+	if err != nil {
+		return fmt.Errorf("Unable to copy netnsproxy to host: %w", err)
+	}
+
+	_, _, err = ssh.RunCommand(c, "chmod +x /tmp/netns-proxy")
+	if err != nil {
+		return fmt.Errorf("cannot set permissions of netnsproxy: %w", err)
+	}
+
+	fmt.Println("Done")
+	return nil
 }
 
 func GetNetnsProxyFileBytes(old bool) ([]byte, error) {
@@ -41,26 +49,85 @@ func GetNetnsProxyFileBytes(old bool) ([]byte, error) {
 	return files.ReadFile(fileName)
 }
 
-func PortForward(client *gossh.Client, netns string, localPort int, remote net.Addr) (int, error) {
-	cmd := fmt.Sprintf(
-		`sudo bash -c "nohup /tmp/netns-proxy -p %s -b 127.0.0.1:%d %s %s > /dev/null 2>&1 & jobs -p"`,
-		remote.Network(), localPort, netns, remote.String())
-	stdout, stderr, err := ssh.RunCommand(client, cmd)
-	// time.Sleep(time.Second)
+
+type NetnsProxyOpts struct {
+	Path string
+	Address string
+	ListenPort int
+	ProxyPort int
+}
+
+const bashWrapper = `run_me() {
+  %s
+}
+
+run_me &
+pid=$!
+trap "kill -INT $PID || kill -TERM $PID" INT TERM
+wait $PID
+`
+
+func (o NetnsProxyOpts) Command () string {
+	exec := fmt.Sprintf("/usr/bin/sudo /tmp/netns-proxy -b 127.0.0.1:%d -p %s %s %s:%d",
+		o.ListenPort, "tcp", o.Path, o.Address, o.ProxyPort,
+	)
+	return fmt.Sprintf(bashWrapper, exec)
+}
+
+func RunNetnsProxy(ctx context.Context, client *gossh.Client, opts NetnsProxyOpts) error {
+	sess, err := client.NewSession()
 	if err != nil {
-		fmt.Println("Error")
-		return 0, err
+		return fmt.Errorf("unable to open session: %w", err)
 	}
-	if stderr != "" {
-		fmt.Println("Error")
-		return 0, fmt.Errorf(stderr)
-	}
-	pid, err := strconv.Atoi(stdout)
+	defer sess.Close()
+
+	err = sess.RequestPty("xterm", 80, 40, gossh.TerminalModes{gossh.ECHO: 0})
 	if err != nil {
-		fmt.Println("Error")
-		return 0, err
+		return fmt.Errorf("unable to request pty: %w", err)
 	}
-	return pid, nil
+
+	err = sess.Start(opts.Command())
+	if err != nil {
+		return fmt.Errorf("cannot start netnsproxy: %w", err)
+	}
+
+	waitChan := make(chan error, 1)
+	go func() {
+		waitChan <- sess.Wait()
+	}()
+
+	select {
+	case err := <-waitChan:
+		return fmt.Errorf("program exited unexpectedly: %w", err)
+
+	case <-ctx.Done():
+		fmt.Print("Shutting down remote netnsproxy...")
+
+		err = sess.Signal(gossh.SIGINT)
+		if err != nil {
+			return fmt.Errorf("unable to send interrupt to remote process: %w", err)
+		}
+
+		timeout := time.NewTicker(5 * time.Second)
+		defer timeout.Stop()
+
+		select {
+		case err = <-waitChan:
+			if err != nil {
+				switch t := err.(type) {
+				case *gossh.ExitError:
+					if t.ExitStatus() == 130 {
+						return nil
+					}
+				default:
+				}
+				return fmt.Errorf("error waiting for process to finish: %w", err)
+			}
+		case <-timeout.C:
+			return fmt.Errorf("timeout reached stopping netsproxy")
+		}
+	}
+	return nil
 }
 
 func checkPortAvailability(c *gossh.Client, port int) (available bool, err error) {
@@ -79,37 +146,42 @@ func checkPortAvailability(c *gossh.Client, port int) (available bool, err error
 	return false, nil
 }
 
-func PortForwardViaSSH(c *gossh.Client, path string, address string, port int) (proxyPort int, remotePid int) {
-	fmt.Print("Setting up remote port forwarding...")
+func GetAvailablePort(c *gossh.Client) (proxyPort int, err error) {
+	var portOk bool
+	const (
+		proxyPortStart = 3022
+		proxyPortEnd   = 3052
+	)
 
-	// Get next available port as multiple netnsproxy instances might be running on remote
-	proxyPort = 3022
-	ok := false
-	var err error
-	for !ok {
-		if proxyPort >= 4000 {
-			fmt.Println("Error")
-			fmt.Println("Unable to find available port on remote...")
-			os.Exit(1)
+	proxyPort = proxyPortStart
+	for !portOk {
+		if proxyPort >= proxyPortEnd {
+			err = fmt.Errorf("cannot find available port between: %d - %d", proxyPortStart, proxyPortEnd)
+			break
 		}
-		ok, err = checkPortAvailability(c, proxyPort)
+
+		portOk, err = checkPortAvailability(c, proxyPort)
 		if err != nil {
-			fmt.Printf("Error\nError checking port availability for port %d\n%s", proxyPort, err.Error())
-			os.Exit(1)
+			err = fmt.Errorf("unable to check for available ports: %w", err)
+			break
 		}
 		proxyPort = proxyPort + 1
 	}
+	return proxyPort, err
+}
 
-	remotePid, err = PortForward(c, path, proxyPort, generic.AddressPort{
-		Address: address,
-		Port:    port,
-		Type:    "tcp",
-	})
+
+func PortForwardToNetns(ctx context.Context, doneCh chan struct{}, c *gossh.Client, opts NetnsProxyOpts) {
+	fmt.Print("Setting up remote port forwarding...")
+
+	// Get next available port as multiple netnsproxy instances might be running on remote
+	err := RunNetnsProxy(ctx, c, opts)
 	if err != nil {
-		fmt.Println()
+		fmt.Println("Error")
 		fmt.Println(err)
-		os.Exit(1)
+		close(doneCh)
+		return
 	}
-	fmt.Println("Done")
-	return proxyPort, remotePid
+
+	close(doneCh)
 }

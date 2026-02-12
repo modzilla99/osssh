@@ -2,12 +2,11 @@ package openstack
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/openstack"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
-	"github.com/gophercloud/gophercloud/v2/pagination"
 	"github.com/modzilla99/osssh/types/openstack/neutron"
 )
 
@@ -15,45 +14,24 @@ func (c *OpenStackClient) GetNeutronClient() (*gophercloud.ServiceClient, error)
 	return openstack.NewNetworkV2(c.ProviderClient, gophercloud.EndpointOpts{})
 }
 
-func getNeutronPortByServerID(c *gophercloud.ServiceClient, id string) (*neutron.Port, error) {
+func getNeutronPortByServerID(ctx context.Context, c *gophercloud.ServiceClient, id string) (*neutron.Port, error) {
 	s := ports.ListOpts{
 		DeviceID: id,
+		Limit:    1,
 	}
-	p, err := ports.List(c, s).AllPages(context.TODO())
+	p, err := ports.List(c, s).AllPages(ctx)
 	if err != nil {
 		return nil, err
 	}
-	ap, err := extractPorts(p)
-	if err != nil {
-		return nil, err
-	}
-	if len(ap) == 0 {
-		return nil, fmt.Errorf("no ports found")
-	}
-	return &ap[0], nil
-}
 
-func getNeutronDistributedPortByNetworkID(c *gophercloud.ServiceClient, id string) (*neutron.Port, error) {
-	s := ports.ListOpts{
-		NetworkID:   id,
-		DeviceOwner: "network:distributed",
-	}
-	pa, err := ports.List(c, s).AllPages(context.TODO())
+	ps := make([]neutron.Port, 0, 1)
+	err = ports.ExtractPortsInto(p, &ps)
 	if err != nil {
 		return nil, err
 	}
-	p, err := extractPorts(pa)
-	if err != nil {
-		return nil, err
-	}
-	if len(p) == 0 {
-		return nil, fmt.Errorf("unable to retrieve distributed port")
-	}
-	return &p[0], nil
-}
 
-func extractPorts(r pagination.Page) ([]neutron.Port, error) {
-	var s []neutron.Port
-	err := ports.ExtractPortsInto(r, &s)
-	return s, err
+	if len(ps) == 0 {
+		return  nil, errors.New("no port found for server with id: " + id)
+	}
+	return &ps[0], nil
 }

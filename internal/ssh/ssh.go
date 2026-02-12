@@ -77,8 +77,10 @@ func RunCommand(client *ssh.Client, cmd string) (string, string, error) {
 	}
 	defer s.Close()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
 	s.Stdout = &stdout
 	s.Stderr = &stderr
 

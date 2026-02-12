@@ -2,6 +2,8 @@ package openstack
 
 import (
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/openstack"
@@ -16,11 +18,10 @@ func (c *OpenStackClient) GetNovaClient() (*gophercloud.ServiceClient, error) {
 func getServerByID(c *gophercloud.ServiceClient, id string) (*nova.Server, error) {
 	s := &nova.Server{}
 	if err := servers.Get(context.TODO(), c, id).ExtractInto(s); err != nil {
+		if gophercloud.ResponseCodeIs(err, http.StatusNotFound) {
+			return nil, errors.New("server with id " + id + " could not be found")
+		}
 		return nil, err
 	}
 	return s, nil
-}
-
-func getHypervisorFromServer(s *nova.Server) string {
-	return s.HypervisorHostname
 }

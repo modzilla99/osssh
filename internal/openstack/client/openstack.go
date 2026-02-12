@@ -1,8 +1,11 @@
 package openstack
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/utils/v2/openstack/clientconfig"
@@ -12,9 +15,10 @@ import (
 )
 
 type Info struct {
+	ServerName         string
 	HypervisorHostname string
 	IPAddress          string
-	MetadataPort       string
+	NetworkID          string
 }
 
 type OpenStackClient struct {
@@ -22,10 +26,10 @@ type OpenStackClient struct {
 	auth           *clientconfig.ClientOpts
 }
 
-func CreateClient() (*OpenStackClient, error) {
+func CreateClient(ctx context.Context) (*OpenStackClient, error) {
 	fmt.Print("Authenticating to OpenStack...")
 	opts := &clientconfig.ClientOpts{}
-	provider, err := auth.Authenticate(opts)
+	provider, err := auth.Authenticate(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -36,17 +40,19 @@ func CreateClient() (*OpenStackClient, error) {
 	}, nil
 }
 
-func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
+func GetInfo(ctx context.Context, osc *OpenStackClient, uuid string) (*Info, error) {
 	var (
-		wg           sync.WaitGroup
-		s            *nova.Server
-		serverPort   *neutron.Port
-		metadataPort *neutron.Port
-		nova         *gophercloud.ServiceClient
-		neutron      *gophercloud.ServiceClient
-		err          error
-		errs         []error
+		wg         sync.WaitGroup
+		s          *nova.Server
+		serverPort *neutron.Port
+		nova       *gophercloud.ServiceClient
+		neutron    *gophercloud.ServiceClient
+		err        error
+		errs       []error
+		cancel     context.CancelFunc
 	)
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	fmt.Print("Fetching data from OpenStack...")
 	neutron, err = osc.GetNeutronClient()
@@ -59,46 +65,35 @@ func GetInfo(osc *OpenStackClient, uuid string) (*Info, error) {
 		return nil, err
 	}
 
-	wg.Add(1)
-	go func() {
-		var er error
-		defer wg.Done()
-		s, er = getServerByID(nova, uuid)
-		if er != nil {
-			errs = append(errs, er)
+	wg.Go(func() {
+		var e error
+		s, e = getServerByID(nova, uuid)
+		if e != nil {
+			errs = append(errs, fmt.Errorf("getServerByID: %w", e))
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		var er error
-		defer wg.Done()
-		serverPort, er = getNeutronPortByServerID(neutron, uuid)
-		if er != nil {
-			errs = append(errs, er)
+	wg.Go(func() {
+		var e error
+		serverPort, e = getNeutronPortByServerID(ctx, neutron, uuid)
+		if e != nil {
+			errs = append(errs, fmt.Errorf("getNeutronPortByServerID: %w", e))
 			return
 		}
-		metadataPort, er = getNeutronDistributedPortByNetworkID(neutron, serverPort.NetworkID)
-		if er != nil {
-			errs = append(errs, er)
-		}
-	}()
+	})
 
 	wg.Wait()
 	if len(errs) == 1 {
-		return nil, errs[0]
+		return nil, fmt.Errorf("experienced errors fetching data: %w", errs[0])
 	} else if len(errs) > 0 {
-		fmt.Println("MultipleErrors")
-		for _, err := range errs {
-			fmt.Println(err)
-		}
-		return nil, errs[0]
+		return nil, errors.Join(errs...)
 	}
 
 	fmt.Println("Done")
 	return &Info{
+		ServerName:         s.Name,
+		HypervisorHostname: s.HypervisorHostname,
 		IPAddress:          serverPort.FixedIPs[0].IPAddress,
-		HypervisorHostname: getHypervisorFromServer(s),
-		MetadataPort:       metadataPort.DeviceID,
+		NetworkID:          serverPort.NetworkID,
 	}, nil
 }

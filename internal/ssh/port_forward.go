@@ -1,7 +1,6 @@
 package ssh
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,23 +44,49 @@ func PortForward(client *ssh.Client, port int, remoteAddress net.Addr) (*PortFor
 
 	return sess, nil
 }
-func portForwardRetry(client *ssh.Client, port int, remoteAddress net.Addr, counter int) (*PortForwardSession, error) {
-	if counter <= 0 {
-		return nil, errors.New("too many retries")
+
+type RetryBackOff struct {
+	mod     int
+	timeout int
+	retry   int
+}
+
+func NewRetryBackOff(retry int) *RetryBackOff {
+	return &RetryBackOff{
+		mod:     2,
+		timeout: 2,
+		retry:   retry,
 	}
-	var sess *PortForwardSession
-	sess, err := portForward(client, port, remoteAddress)
-	if err != nil {
-		if err.Error() == "ssh: rejected: connect failed (Connection refused)" {
-			fmt.Printf("Retrying...")
-			time.Sleep(300 * time.Millisecond)
-			sess, err = portForwardRetry(client, port, remoteAddress, counter-1)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
+}
+
+func (r *RetryBackOff) RunWithRetry(f func() error) error {
+	t := r.timeout
+	var err error
+	for retry := r.retry; retry > 0; retry-- {
+		err = f()
+		if err == nil {
+			return nil
 		}
+		fmt.Print("Retrying...")
+
+		time.Sleep(time.Duration(t) * time.Second)
+		t = t ^ r.mod
+	}
+	return err
+}
+
+func portForwardRetry(client *ssh.Client, port int, remoteAddress net.Addr, counter int) (*PortForwardSession, error) {
+	var sess *PortForwardSession
+
+	r := NewRetryBackOff(counter)
+
+	err := r.RunWithRetry(func() error {
+		var err error
+		sess, err = portForward(client, port, remoteAddress)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 	return sess, nil
 }

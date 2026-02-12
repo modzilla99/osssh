@@ -3,9 +3,9 @@ package utils
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
-	"strconv"
+	"path"
+	"strings"
 
 	"github.com/hashicorp/go-uuid"
 	"github.com/modzilla99/osssh/internal/ssh"
@@ -44,18 +44,30 @@ func ParseArgs() (args generic.Args) {
 	return args
 }
 
-func GetPidOfNeutronMetadata(c *gossh.Client) (pid int) {
-	fmt.Print("Obtaining PID of Neutron Metadata Server...")
-	out, stderr, err := ssh.RunCommand(c, "sudo docker inspect -f '{{.State.Pid}}' neutron-metadata-agent-ovn")
-	if err != nil {
-		log.Fatalln(stderr, err)
+func bashGetHaProxyPid(net string) string {
+	return fmt.Sprintf(`#!/usr/bin/env bash
+net='%s'
+cmd="haproxy -f /var/lib/neutron/ovn-metadata-proxy/${net}.conf"
+
+while read -r pid command; do
+  if [[ "$command" = "$cmd" ]]; then
+    printf '%s' "$pid"
+    break
+  fi
+done < <(ps --no-headers -axo pid,command)`, net, "%d")
+}
+
+func GetNetNSFromNeutronMetadata(c *gossh.Client, net string) (string, error) {
+	if strings.Contains(net, "'") || strings.HasSuffix(net, `\`) {
+		return "", fmt.Errorf("invalid network id: %s", net)
 	}
-	pid, err = strconv.Atoi(out)
+	fmt.Print("Obtaining path to NetworkNamespace...")
+
+	out, stderr, err := ssh.RunCommand(c, bashGetHaProxyPid(net))
 	if err != nil {
-		fmt.Println()
-		log.Fatalln(err)
+		return "", fmt.Errorf("unable to get pid of haproxy: stderr: %s error: %w", stderr, err)
 	}
+
 	fmt.Println("Done")
-	fmt.Printf("Got PID of Neutron Metadata Agent: %d\n", pid)
-	return pid
+	return path.Join("/proc", out, "/ns/net"), nil
 }
