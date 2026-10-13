@@ -19,14 +19,8 @@ type Process interface {
 	Close() error
 }
 
-var (
-	hypervisor string
-	username   string
-)
-
 func main() {
 	args := utils.ParseArgs()
-	username = args.Username
 	ctx := context.Background()
 	osc, err := openstack.CreateClient(ctx)
 	if err != nil {
@@ -38,7 +32,6 @@ func main() {
 		fmt.Printf("Error\n%s\n", err)
 		os.Exit(1)
 	}
-	hypervisor = i.HypervisorHostname
 
 	if err := run(ctx, i, args); err != nil {
 		fmt.Println("Error")
@@ -53,7 +46,7 @@ func run(ctx context.Context, info *openstack.Info, args generic.Args) error {
 	defer cancel()
 
 	fmt.Print("Connecting to SSH...")
-	c, err := ssh.NewClient(hypervisor, args.Username)
+	c, err := ssh.NewClient(info.HypervisorHostname, args.Username)
 	if err != nil {
 		fmt.Printf("Error\n%s\n", err)
 		os.Exit(1)

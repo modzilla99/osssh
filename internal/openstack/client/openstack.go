@@ -70,6 +70,16 @@ func GetInfo(ctx context.Context, osc *OpenStackClient, uuid string) (*Info, err
 		s, e = getServerByID(nova, uuid)
 		if e != nil {
 			errs = append(errs, fmt.Errorf("getServerByID: %w", e))
+			return
+		}
+
+		if s.Status != "ACTIVE" {
+			errs = append(errs, fmt.Errorf("server %q (%s) in state %s", s.Name, uuid, s.Status))
+			return
+		}
+
+		if s.HypervisorHostname == "" {
+			errs = append(errs, fmt.Errorf("server %q (%s) has no mandatory hypervisor hostname set, most likely no admin client was provided", s.Name, uuid))
 		}
 	})
 
