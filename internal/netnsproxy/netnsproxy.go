@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/modzilla99/osssh/internal/ssh"
@@ -38,15 +39,11 @@ func Setup(c *gossh.Client) error {
 	return nil
 }
 
-func GetNetnsProxyFileBytes(old bool) ([]byte, error) {
-
-	var fileName string
+func GetNetnsProxyFileBytes(old bool) (io.Reader, error) {
 	if old {
-		fileName = "files/netns-proxy-glic-old"
-	} else {
-		fileName = "files/netns-proxy-glic-new"
+		return files.Open("files/netns-proxy-glic-old")
 	}
-	return files.ReadFile(fileName)
+	return files.Open("files/netns-proxy-glic-new")
 }
 
 type NetnsProxyOpts struct {
@@ -57,7 +54,7 @@ type NetnsProxyOpts struct {
 }
 
 const bashWrapper = `run_me() {
-  %s
+  /usr/bin/sudo /tmp/netns-proxy -b 127.0.0.1:%d -p %s %s %s:%d
 }
 
 run_me &
@@ -67,10 +64,9 @@ wait $PID
 `
 
 func (o NetnsProxyOpts) Command() string {
-	exec := fmt.Sprintf("/usr/bin/sudo /tmp/netns-proxy -b 127.0.0.1:%d -p %s %s %s:%d",
+	return fmt.Sprintf(bashWrapper,
 		o.ListenPort, "tcp", o.Path, o.Address, o.ProxyPort,
 	)
-	return fmt.Sprintf(bashWrapper, exec)
 }
 
 func RunNetnsProxy(ctx context.Context, client *gossh.Client, opts NetnsProxyOpts) error {

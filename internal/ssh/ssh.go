@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -88,18 +89,33 @@ func RunCommand(client *ssh.Client, cmd string) (string, string, error) {
 	return strings.TrimSuffix(stdout.String(), "\n"), strings.TrimSuffix(stderr.String(), "\n"), err
 }
 
-func WriteFile(client *ssh.Client, fileName string, file []byte) error {
-	stdin := base64.StdEncoding.EncodeToString(file)
+func WriteFile(client *ssh.Client, fileName string, file io.Reader) error {
+	pipeReader, pipeWriter := io.Pipe()
+
+	go func() {
+		b64Enc := base64.NewEncoder(base64.StdEncoding, pipeWriter)
+
+		_, errCpy := io.Copy(b64Enc, file)
+		errClose := b64Enc.Close()
+
+		switch {
+		case errCpy != nil:
+			pipeWriter.CloseWithError(errCpy)
+		case errClose != nil:
+			pipeWriter.CloseWithError(errClose)
+		default:
+			pipeWriter.Close()
+		}
+	}()
+
 	s, err := GetSession(client)
 	if err != nil {
 		return err
 	}
 	defer s.Close()
 
-	s.Stdin = bytes.NewBufferString(stdin)
-
-	s.Run("base64 -d > " + fileName)
-	return nil
+	s.Stdin = pipeReader
+	return s.Run("base64 -d > " + fileName)
 }
 
 func ConnectSSHAgentSock() (*net.Conn, error) {
