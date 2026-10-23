@@ -73,7 +73,7 @@ func GetInfo(ctx context.Context, osc *OpenStackClient, uuid string) (*Info, err
 			return
 		}
 
-		if s.Status != "ACTIVE" {
+		if s.Status != "ACTIVE" && s.Status != "VERIFY_RESIZE" {
 			errs = append(errs, fmt.Errorf("server %q (%s) in state %s", s.Name, uuid, s.Status))
 			return
 		}
